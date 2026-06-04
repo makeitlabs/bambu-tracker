@@ -67,7 +67,7 @@ def run_lan_discovery(scan_duration=30):
                     elif "DevName.bambu.com:" in line:
                         name = line.split(":")[-1].strip()
 
-                if serial and serial not in found_devices:
+                if serial not in found_devices:
                     found_devices[serial] = {
                         "ip": ip,
                         "model": model,
@@ -108,10 +108,9 @@ class BambuPrinterTracker:
         self.last_slack_state = "UNKNOWN"
         self.last_slack_progress = -5  
         
-        self.connected = False
-
         self.client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
         self._configure_mqtt()
+        self._running = False
 
     def _configure_mqtt(self):
         self.client.username_pw_set(username="bblp", password=self.access_code)
@@ -122,6 +121,7 @@ class BambuPrinterTracker:
         
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
+        self.client.on_disconnect = self._on_disconnect
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         if reason_code == 0:
@@ -146,6 +146,9 @@ class BambuPrinterTracker:
         except Exception as e:
             print(f"[-] [{self.friendly_name}] Telemetry parse failure: {e}")
 
+    def _on_disconnect(self, client, userdata, flags, reason_code, properties):
+        print(f"[-] [{self.friendly_name}] Disconnected from printer MQTT broker. Code: {reason_code}")
+
     def check_slack_conditions(self):
         if not self.slack_client or not self.slack_channel:
             return
@@ -167,6 +170,12 @@ class BambuPrinterTracker:
             self.send_to_slack()
             self.last_slack_state = self.gcode_state
             # self.last_slack_progress = self.progress
+
+    def connected(self):
+        return self.client.is_connected()
+
+    def running(self):
+        return self._running
 
     def send_to_slack(self):
         timestamp = datetime.now().strftime("%I:%M %p  %m-%d-%Y")
@@ -224,20 +233,26 @@ class BambuPrinterTracker:
 
     def start(self):
         try:
-            self.client.connect(self.ip, 8883, keepalive=60)
-            self.connected = True
-        except:
-            print(f"[-] [{self.friendly_name}] Failed to connect to client.  Ignoring.")
-            self.connected = False
+            self.client.connect_timeout = 60.0
+            result = self.client.connect(self.ip, 8883, keepalive=60)
+            if result != 0:
+                print(f"[-] [{self.friendly_name}] Failed to connect to client - Ignoring. Code: {result}")
+                return
+        except TimeoutError:
+            print(f"[-] [{self.friendly_name}] Timeout Error connecting to client - Ignoring.")
+            return
+        except socket.error as e:
+            print(f"[-] [{self.friendly_name}] Socket Error connecting to client - Ignoring. Code: {e}")
+            return
 
-        if self.connected:
-            self.client.loop_start()
+        self.client.loop_start()
+        self._running = True
 
     def stop(self):
-        if self.connected:
+        if self.connected():
             self.client.loop_stop()
             self.client.disconnect()
-        self.connected = False
+        self._running = False
 
 # =====================================================================
 # MAIN RUNTIME ENGINE
@@ -245,47 +260,59 @@ class BambuPrinterTracker:
 if __name__ == "__main__":
     # Initialize the centralized Slack OAuth connection
     shared_slack_client = WebClient(token=SLACK_BOT_TOKEN)
-    
-    # Step 1: Run the 30-second network scan
-    discovered_printers = run_lan_discovery(scan_duration=30)
-    
-    active_trackers = []
-    
-    # Step 2: Loop through found machines and spin up threads dynamically
-    for device in discovered_printers:
-        serial = device["serial"]
-        
-        # Pull matching access code from your security matrix
-        if serial in PRINTER_CREDENTIALS:
-            access_code = PRINTER_CREDENTIALS[serial]
-            
-            # Instantiate class tracker object dynamically
-            tracker = BambuPrinterTracker(
-                ip=device["ip"],
-                access_code=access_code,
-                serial_number=serial,
-                friendly_name=device["name"],
-                slack_client=shared_slack_client,
-                slack_channel=TARGET_CHANNEL
-            )
-            active_trackers.append(tracker)
-        else:
-            print(f"[!] Warning: Found printer {device['name']} ({serial}), but no matching access code was found in PRINTER_CREDENTIALS matrix. Skipping...")
 
-    # Step 3: Boot up tracking loops concurrently
-    if active_trackers:
-        print(f"[*] Spawning background network threads for {len(active_trackers)} printer(s)...")
-        for tracker in active_trackers:
-            tracker.start()
-            
-        print("\n[+] Printer notification engine running. Press Ctrl+C to exit safely.")
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            print("\n[*] Shutting down tracking engines smoothly...")
+    active_trackers = []
+    print("\n[+] Printer tracker engine running. Press Ctrl+C to exit safely.")
+
+    discovered_printers = []
+
+    try:
+        while True:
+            time.sleep(10)
+
+            # Step 1: Run the 5-second network scan
+            discovered_printers = run_lan_discovery(scan_duration=10)
+        
+            # Step 2: Loop through found machines and spin up threads dynamically
+            for device in discovered_printers:
+                serial = device["serial"]
+                
+                # Pull matching access code from your security matrix
+                if serial in PRINTER_CREDENTIALS:
+                    access_code = PRINTER_CREDENTIALS[serial]
+                    
+                    # add printer object to active trackers if not already there
+                    already_tracking = False
+                    for tracker in active_trackers:
+                        if tracker.serial_number == serial:
+                            already_tracking = True
+
+                    if not already_tracking:
+                        # Instantiate class tracker object dynamically
+                        tracker = BambuPrinterTracker(
+                            ip=device["ip"],
+                            access_code=access_code,
+                            serial_number=serial,
+                            friendly_name=device["name"],
+                            slack_client=shared_slack_client,
+                            slack_channel=TARGET_CHANNEL
+                        )
+                        active_trackers.append(tracker)
+                else:
+                    print(f"[!] Warning: Found printer {device['name']} ({serial}), but no matching access code was found in PRINTER_CREDENTIALS matrix. Skipping...")
+
+            # Step 3: Boot up tracking loops concurrently
+            if active_trackers:
+                for tracker in active_trackers:
+                    if not tracker.running():
+                        print(f"[*] Spawning background network thread for {tracker.friendly_name}...")
+                        tracker.start()
+                    
+    except KeyboardInterrupt:
+        print("\n[*] Shutting down tracking engines smoothly...")
+        if active_trackers:
             for tracker in active_trackers:
-                if tracker.connected:
+                if tracker.running():
                     tracker.stop()
-            else:
-                print("[-] No valid tracked printers found on the network or credential matching failed. Exiting.")
+        else:
+            print("[-] No valid tracked printers found on the network or credential matching failed. Exiting.")
