@@ -157,7 +157,7 @@ class BambuPrinterTracker:
             # don't process if UNKNOWN
             return
 
-        if (self.gcode_state == "RUNNING") and (self.remaining_time == 0) and (self.progress == 0):
+        if (self.gcode_state == "RUNNING") and ((self.remaining_time == 0) or (self.progress == 0)):
             # when job first starts running, printer doesn't report
             # remaining time or percent completed, but does change state
             # force this to unknown
