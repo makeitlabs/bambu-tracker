@@ -92,7 +92,7 @@ def run_lan_discovery(scan_duration=30):
 # MQTT TELEMETRY & SLACK OUTBOUND TRACKER LAYER
 # =====================================================================
 class BambuPrinterTracker:
-    def __init__(self, ip, access_code, serial_number, friendly_name, slack_client=None, slack_channel=None, mqtt_broker):
+    def __init__(self, ip, access_code, serial_number, friendly_name, slack_client=None, slack_channel=None, mqtt_broker=None):
         self.ip = ip
         self.access_code = access_code
         self.serial_number = serial_number
@@ -143,10 +143,12 @@ class BambuPrinterTracker:
                 self.active_job = print_data.get("subtask_name", self.active_job)
                 
                 # publish to MQTT
-                broker.update_printer_status(serial = self.serial_number, name = self.friendly_name, status = self.gcode_state, 
+                if (self.broker):
+                    self.broker.update_printer_status(serial = self.serial_number, name = self.friendly_name, status = self.gcode_state, 
                                              percent = self.progress, remaining = self.remaining_time, job = self.active_job)
 
-                self.check_slack_conditions()
+                if (self.slack_client):
+                    self.check_slack_conditions()
                 
         except Exception as e:
             print(f"[-] [{self.friendly_name}] Telemetry parse failure: {e}")
