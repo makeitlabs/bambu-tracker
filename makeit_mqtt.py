@@ -51,7 +51,7 @@ class MakeItMQTT:
         # change all spaces to underscores
         clean_serial = clean_serial.replace(' ', '_')
         # convert to lower case
-        clean_serial = clean_serial.lower()
+        # clean_serial = clean_serial.lower()
 
         return clean_serial
 
