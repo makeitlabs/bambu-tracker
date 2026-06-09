@@ -38,7 +38,7 @@ class MakeItMQTT:
             })
         
         # make sure serial number is MQTT safe
-        clean_serial = sanitize_printer_serial(serial)
+        clean_serial = self.sanitize_printer_serial(serial)
 
         r = self.client.publish(f"printers/{clean_serial}",payload=stat,qos=1,retain=1)
         r.wait_for_publish()
