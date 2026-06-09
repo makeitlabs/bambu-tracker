@@ -29,7 +29,7 @@ class MakeItMQTT:
 
     def update_printer_status(self, serial, name, status, percent, remaining, job):
         stat = json.dumps({
-            "name":name
+            "name":name,
             "status":status,
             "percent":percent,
             "min_remaining":remaining,
