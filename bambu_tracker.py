@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 import paho.mqtt.client as mqtt
-import makeit_mqtt
+from makeit_mqtt import MakeItMQTT
 
 # =====================================================================
 # GLOBAL CONFIGURATION
