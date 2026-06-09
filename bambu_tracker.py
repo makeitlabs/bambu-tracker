@@ -97,6 +97,8 @@ class BambuPrinterTracker:
         self.access_code = access_code
         self.serial_number = serial_number
         self.friendly_name = friendly_name
+        self.topic = f"device/{self.serial_number}/report"
+
         self.slack_client = slack_client
         self.slack_channel = slack_channel
         self.broker = mqtt_broker
