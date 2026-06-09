@@ -307,7 +307,8 @@ if __name__ == "__main__":
                             serial_number=serial,
                             friendly_name=device["name"],
                             slack_client=shared_slack_client,
-                            slack_channel=TARGET_CHANNEL
+                            slack_channel=TARGET_CHANNEL,
+                            mqtt_broker = broker
                         )
                         active_trackers.append(tracker)
                 else:
