@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 import paho.mqtt.client as mqtt
+import makeit_mqtt
 
 # =====================================================================
 # GLOBAL CONFIGURATION
@@ -91,14 +92,14 @@ def run_lan_discovery(scan_duration=30):
 # MQTT TELEMETRY & SLACK OUTBOUND TRACKER LAYER
 # =====================================================================
 class BambuPrinterTracker:
-    def __init__(self, ip, access_code, serial_number, friendly_name, slack_client=None, slack_channel=None):
+    def __init__(self, ip, access_code, serial_number, friendly_name, slack_client=None, slack_channel=None, mqtt_broker):
         self.ip = ip
         self.access_code = access_code
         self.serial_number = serial_number
         self.friendly_name = friendly_name
         self.slack_client = slack_client
         self.slack_channel = slack_channel
-        self.topic = f"device/{self.serial_number}/report"
+        self.broker = mqtt_broker
         
         self.gcode_state = "UNKNOWN"
         self.progress = -1
@@ -141,6 +142,10 @@ class BambuPrinterTracker:
                 self.remaining_time = print_data.get("mc_remaining_time", self.remaining_time)
                 self.active_job = print_data.get("subtask_name", self.active_job)
                 
+                # publish to MQTT
+                broker.update_printer_status(serial = self.serial_number, name = self.friendly_name, status = self.gcode_state, 
+                                             percent = self.progress, remaining = self.remaining_time, job = self.active_job)
+
                 self.check_slack_conditions()
                 
         except Exception as e:
@@ -250,8 +255,8 @@ class BambuPrinterTracker:
 
     def stop(self):
         if self.connected():
-            self.client.loop_stop()
             self.client.disconnect()
+            self.client.loop_stop()
         self._running = False
 
 # =====================================================================
@@ -265,6 +270,9 @@ if __name__ == "__main__":
     print("\n[+] Printer tracker engine running. Press Ctrl+C to exit safely.")
 
     discovered_printers = []
+
+    # connect to MQTT
+    broker = MakeItMQTT()
 
     try:
         while True:
@@ -316,3 +324,7 @@ if __name__ == "__main__":
                     tracker.stop()
         else:
             print("[-] No valid tracked printers found on the network or credential matching failed. Exiting.")
+
+        # shut down the MQTT broker connection
+        broker.client.disconnect()
+        broker.client.loop_stop()
