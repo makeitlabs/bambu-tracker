@@ -1,5 +1,7 @@
 # bambu-tracker specific ignores
 bambu_tracker_secrets.py
+*.crt
+*.key
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
