@@ -18,13 +18,12 @@ class MakeItMQTT:
     CLIENT_KEY = "client_printmon.key"
 
     # --- Callback Functions ---
-    def on_connect(self,client, userdata, flags, rc, properties=None):
-        if rc == 0:
+    def on_connect(self,client, userdata, flags, reason_code, properties=None):
+        if reason_code == 0:
             pass
             #client.subscribe(TOPIC)
         else:
-            print(f"Connection failed with code {rc}")
-
+            print(f"Connection failed with code {reason_code}")
     def on_message(client, userdata, msg):
         print(f"Topic: {msg.topic} | Message: {msg.payload.decode()}")
 
