@@ -97,6 +97,8 @@ class BambuPrinterTracker:
         self.access_code = access_code
         self.serial_number = serial_number
         self.friendly_name = friendly_name
+        self.timestamp = datetime.now()
+        self.last_mqtt_time = datetime.now()
         self.topic = f"device/{self.serial_number}/report"
 
         self.slack_client = slack_client
@@ -143,11 +145,11 @@ class BambuPrinterTracker:
                 self.progress = print_data.get("mc_percent", self.progress)
                 self.remaining_time = print_data.get("mc_remaining_time", self.remaining_time)
                 self.active_job = print_data.get("subtask_name", self.active_job)
-                
+                self.timestamp = datetime.now()
+
                 # publish to MQTT
                 if (self.broker):
-                    self.broker.update_printer_status(serial = self.serial_number, name = self.friendly_name, status = self.gcode_state, 
-                                             percent = self.progress, remaining = self.remaining_time, job = self.active_job)
+                    self.check_mqtt_conditions()
 
                 if (self.slack_client):
                     self.check_slack_conditions()
@@ -157,6 +159,12 @@ class BambuPrinterTracker:
 
     def _on_disconnect(self, client, userdata, flags, reason_code, properties):
         print(f"[-] [{self.friendly_name}] Disconnected from printer MQTT broker. Code: {reason_code}")
+
+    def check_mqtt_conditions(self):
+        if self.timestamp >= self.last_mqtt_time + timedelta(minutes = 1):
+            self.last_mqtt_time = self.timestamp
+            self.broker.update_printer_status(serial = self.serial_number, name = self.friendly_name, status = self.gcode_state, 
+                                              percent = self.progress, remaining = self.remaining_time, job = self.active_job)
 
     def check_slack_conditions(self):
         if not self.slack_client or not self.slack_channel:
@@ -187,8 +195,8 @@ class BambuPrinterTracker:
         return self._running
 
     def send_to_slack(self):
-        timestamp = datetime.now().strftime("%I:%M %p  %m-%d-%Y")
-        finish_time = (datetime.now() + timedelta(minutes = self.remaining_time)).strftime("%I:%M %p  %m-%d-%Y")
+        timestamp = self.timestamp.strftime("%I:%M %p  %m-%d-%Y")
+        finish_time = (self.timestamp + timedelta(minutes = self.remaining_time)).strftime("%I:%M %p  %m-%d-%Y")
 
         emoji = "⚪"
         if self.gcode_state == "RUNNING": emoji = "🟢"
