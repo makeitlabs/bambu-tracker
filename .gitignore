@@ -2,6 +2,8 @@
 bambu_tracker_secrets.py
 *.crt
 *.key
+*.png
+*.jpg
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
